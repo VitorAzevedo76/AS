@@ -1,0 +1,64 @@
+networks: 
+  net: ~
+  traefik: 
+    external: 
+      name: traefik
+services: 
+  cliente: 
+    image: vitorazevedo76/aplicacion_cliente_as
+    container_name: cliente
+    volumes:
+      - app:/home/app/
+    depends_on: 
+      - vault
+      - consul
+    networks:
+      - net
+  consul: 
+    command: "agent -server -bind 0.0.0.0 -data-dir=/consul/data -client 0.0.0.0 -bootstrap-expect=1"
+    container_name: consul
+    healthcheck: 
+      test: 
+        - CMD
+        - /bin/sh
+        - "-c"
+        - "curl -sfLo /dev/null http://127.0.0.1:8500/v1/health/node/127.0.0.1:8200"
+    image: consul
+    networks: 
+      - net
+    restart: always
+    volumes: 
+      - "consul:/consul/data"
+  vault: 
+    cap_add: 
+      - IPC_LOCK
+    command: server
+    container_name: vault
+    depends_on: 
+      - consul
+    environment: 
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_LOCAL_CONFIG: "{\"backend\": {\"consul\": {\"path\": \"vault/\", \"address\": \"consul:8500\", \"scheme\": \"http\"}}, \"listener\": {\"tcp\": {\"address\": \"0.0.0.0:8200\", \"tls_disable\": 1}}, \"default_lease_ttl\": \"168h\", \"max_lease_ttl\": \"720h\", \"ui\": true}"
+    image: vault
+    labels: 
+      - traefik.backend=vault
+      - "traefik.frontend.rule=Host:vault.example.com"
+      - traefik.docker.network=traefik
+      - traefik.port=8200
+    networks: 
+      - net
+      - traefik
+    ports: 
+      - "8200:8200"
+    restart: always
+    volumes: 
+      - "file:/vault/file"
+      - "logs:/vault/logs"
+      - "./config/policies:/vault/policies"
+version: "3.5"
+volumes: 
+  consul: ~
+  file: ~
+  logs: ~
+  app: 
+    external: true
